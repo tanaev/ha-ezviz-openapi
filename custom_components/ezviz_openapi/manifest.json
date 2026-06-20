@@ -1,7 +1,7 @@
 {
   "domain": "ezviz_openapi",
   "name": "EZVIZ Open API",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "config_flow": true,
   "documentation": "https://github.com/tanaev/ha-ezviz-openapi",
   "issue_tracker": "https://github.com/tanaev/ha-ezviz-openapi/issues",
