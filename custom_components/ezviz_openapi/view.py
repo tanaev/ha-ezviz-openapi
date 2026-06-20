@@ -65,38 +65,45 @@ class EzvizStreamView(HomeAssistantView):
         except ValueError:
             return web.Response(status=400, text="bad channel")
 
+        # Send the 200 + headers IMMEDIATELY, before the (slow) EZVIZ fetch and
+        # upstream connect. Otherwise a reverse proxy in front of HA times out
+        # waiting for the first byte and returns 504. X-Accel-Buffering disables
+        # nginx/ingress response buffering so FLV flows through live.
+        response = web.StreamResponse(
+            headers={
+                "Content-Type": "video/x-flv",
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            }
+        )
+        await response.prepare(request)
+
         coordinator = hass.data[DOMAIN][entry.entry_id]
         codes = parse_verify_codes(entry.options.get(CONF_VERIFY_CODES, ""))
+        verify_ssl = entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+        session = async_get_clientsession(hass, verify_ssl=verify_ssl)
 
+        upstream = None
         try:
             data = await coordinator.api.async_live_address(
                 serial, channel_no, PROTOCOLS["flv"], codes.get(serial)
             )
-        except (EzvizApiError, aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.warning("EZVIZ live URL failed for %s/%s: %s", serial, channel, err)
-            return web.Response(status=502, text="upstream live URL error")
-
-        url = data.get("url")
-        if not url:
-            return web.Response(status=502, text="no live URL")
-
-        verify_ssl = entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-        session = async_get_clientsession(hass, verify_ssl=verify_ssl)
-        response = web.StreamResponse(
-            headers={"Content-Type": "video/x-flv", "Cache-Control": "no-cache"}
-        )
-        try:
+            url = data.get("url")
+            if not url:
+                _LOGGER.warning("No EZVIZ live URL for %s/%s", serial, channel)
+                return response
             upstream = await session.get(url)
-        except (aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.warning("EZVIZ FLV connect failed: %s", err)
-            return web.Response(status=502, text="upstream connect error")
-
-        try:
-            await response.prepare(request)
             async for chunk in upstream.content.iter_chunked(_CHUNK):
                 await response.write(chunk)
-        except (ConnectionResetError, asyncio.CancelledError, aiohttp.ClientError):
-            pass  # client (Scrypted) disconnected, or upstream ended — expected
+        except (
+            EzvizApiError,
+            aiohttp.ClientError,
+            TimeoutError,
+            ConnectionResetError,
+            asyncio.CancelledError,
+        ) as err:
+            _LOGGER.debug("Stream ended for %s/%s: %s", serial, channel, err)
         finally:
-            upstream.close()
+            if upstream is not None:
+                upstream.close()
         return response
