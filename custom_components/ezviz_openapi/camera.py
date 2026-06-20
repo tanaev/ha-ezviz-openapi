@@ -122,7 +122,7 @@ class EzvizOpenCamera(CoordinatorEntity[EzvizOpenCoordinator], Camera):
             base = get_url(self.hass, prefer_external=False, allow_internal=True)
         except NoURLAvailableError:
             base = "http://127.0.0.1:8123"
-        return f"{base}/api/ezviz_openapi/{token}/{self._serial}/{self._channel}.flv"
+        return f"{base}/api/ezviz_openapi/{token}/{self._serial}/{self._channel}.ts"
 
     async def stream_source(self) -> str | None:
         """Return the stable proxy URL (it refreshes the EZVIZ session itself)."""
