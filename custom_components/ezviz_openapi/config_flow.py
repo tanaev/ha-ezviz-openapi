@@ -1,6 +1,7 @@
 """Config and options flow for the EZVIZ Open API integration."""
 from __future__ import annotations
 
+import secrets
 from collections.abc import Mapping
 from typing import Any
 
@@ -23,6 +24,7 @@ from .const import (
     CONF_PROTOCOL,
     CONF_REGION,
     CONF_SCAN_INTERVAL,
+    CONF_STREAM_TOKEN,
     CONF_VERIFY_CODES,
     CONF_VERIFY_SSL,
     DEFAULT_PROTOCOL,
@@ -80,6 +82,7 @@ class EzvizOpenConfigFlow(ConfigFlow, domain=DOMAIN):
             if not errors:
                 await self.async_set_unique_id(user_input[CONF_APP_KEY])
                 self._abort_if_unique_id_configured()
+                user_input[CONF_STREAM_TOKEN] = secrets.token_hex(16)
                 return self.async_create_entry(
                     title="EZVIZ Open API", data=user_input
                 )

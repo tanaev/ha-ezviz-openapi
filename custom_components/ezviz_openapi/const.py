@@ -14,6 +14,24 @@ CONF_VERIFY_SSL = "verify_ssl"
 CONF_PROTOCOL = "protocol"
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_VERIFY_CODES = "verify_codes"
+# Per-entry secret embedded in the stable stream-proxy URL (path-based auth).
+CONF_STREAM_TOKEN = "stream_token"
+
+
+def parse_verify_codes(raw: str) -> dict[str, str]:
+    """Parse 'SERIAL=CODE' / 'SERIAL:CODE' pairs (newline or comma separated)."""
+    codes: dict[str, str] = {}
+    for chunk in (raw or "").replace(",", "\n").splitlines():
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        sep = "=" if "=" in chunk else ":" if ":" in chunk else None
+        if not sep:
+            continue
+        serial, _, code = chunk.partition(sep)
+        if serial.strip() and code.strip():
+            codes[serial.strip()] = code.strip()
+    return codes
 
 # EZVIZ Open Platform regional API gateways (verified live).
 # NB: open.ezviz.com is the *website* (404 on API). These hosts serve the API.

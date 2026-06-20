@@ -53,6 +53,31 @@ Station* on channel 1). Add a Picture/Camera card and you get the live view.
 - Snapshots/thumbnails use the Open API `device/capture` endpoint (best-effort).
 - Two-way talk / PTZ are not implemented (live video only) — could be added.
 
+## Stable stream URL (for Scrypted / VLC / continuous viewing)
+
+The EZVIZ cloud caps each live session at ~60s (both HLS and RTMP), so a raw URL
+stops after a minute. To work around this, the integration serves a **stable,
+non-expiring FLV URL** that transparently fetches a fresh session on every
+connect. Any consumer that reconnects (Scrypted's rebroadcast, HA's stream
+worker, VLC) therefore gets continuous video.
+
+Find the URL on the camera entity: **Developer Tools → States →
+`camera.<your_camera>` → attribute `stream_url`**, e.g.:
+
+```
+http://<HA_IP>:8123/api/ezviz_openapi/<token>/Q06679540/1.flv
+```
+
+It's a byte passthrough (no transcoding), so it's light on the HA host
+(~0.5 Mbps per active viewer); the heavy lifting stays on the consumer.
+
+### Add to Scrypted
+
+1. Scrypted → install **FFmpeg Camera** plugin → add a camera.
+2. **FFmpeg Input** = the `stream_url` above.
+3. Enable **Rebroadcast (Prebuffer)** on it. Scrypted reconnects every ~60s
+   (≈1–2s blip) → continuous, plus WebRTC/HomeKit/low-latency for free.
+
 ## Notes
 
 Behind a TLS-intercepting corporate proxy you can untick *Verify TLS certificate*

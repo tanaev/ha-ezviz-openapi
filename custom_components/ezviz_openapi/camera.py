@@ -13,35 +13,22 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import EzvizApiError
 from .const import (
     CONF_PROTOCOL,
+    CONF_STREAM_TOKEN,
     CONF_VERIFY_CODES,
     DEFAULT_PROTOCOL,
     DOMAIN,
     PROTOCOLS,
+    parse_verify_codes,
 )
 from .coordinator import EzvizOpenCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _parse_codes(raw: str) -> dict[str, str]:
-    """Parse 'SERIAL=CODE' / 'SERIAL:CODE' pairs (newline or comma separated)."""
-    codes: dict[str, str] = {}
-    for chunk in raw.replace(",", "\n").splitlines():
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        sep = "=" if "=" in chunk else ":" if ":" in chunk else None
-        if not sep:
-            continue
-        serial, _, code = chunk.partition(sep)
-        if serial.strip() and code.strip():
-            codes[serial.strip()] = code.strip()
-    return codes
 
 
 async def async_setup_entry(
@@ -51,7 +38,7 @@ async def async_setup_entry(
 ) -> None:
     coordinator: EzvizOpenCoordinator = hass.data[DOMAIN][entry.entry_id]
     protocol = PROTOCOLS[entry.options.get(CONF_PROTOCOL, DEFAULT_PROTOCOL)]
-    codes = _parse_codes(entry.options.get(CONF_VERIFY_CODES, ""))
+    codes = parse_verify_codes(entry.options.get(CONF_VERIFY_CODES, ""))
 
     known: set[str] = set()
 
@@ -121,19 +108,31 @@ class EzvizOpenCamera(CoordinatorEntity[EzvizOpenCoordinator], Camera):
             sw_version=dev.get("deviceVersion"),
         )
 
-    async def stream_source(self) -> str | None:
-        """Fetch a *fresh* live URL on each (re)start — this is the auto-refresh."""
-        try:
-            data = await self.coordinator.api.async_live_address(
-                self._serial,
-                self._channel,
-                self._protocol,
-                self._codes.get(self._serial),
-            )
-        except (EzvizApiError, aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.warning("Failed to get live URL for %s: %s", self.unique_id, err)
+    def _proxy_url(self) -> str | None:
+        """Stable, non-expiring FLV URL served by this integration.
+
+        It transparently fetches a fresh EZVIZ session on every connect, so any
+        consumer that reconnects (HA's stream worker, Scrypted's rebroadcast,
+        VLC) gets continuous video despite the ~60s server-side session cap.
+        """
+        token = self.coordinator.config_entry.data.get(CONF_STREAM_TOKEN)
+        if not token:
             return None
-        return data.get("url")
+        try:
+            base = get_url(self.hass, prefer_external=False, allow_internal=True)
+        except NoURLAvailableError:
+            base = "http://127.0.0.1:8123"
+        return f"{base}/api/ezviz_openapi/{token}/{self._serial}/{self._channel}.flv"
+
+    async def stream_source(self) -> str | None:
+        """Return the stable proxy URL (it refreshes the EZVIZ session itself)."""
+        return self._proxy_url()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose the stable stream URL so it can be pasted into Scrypted/VLC."""
+        url = self._proxy_url()
+        return {"stream_url": url} if url else {}
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None

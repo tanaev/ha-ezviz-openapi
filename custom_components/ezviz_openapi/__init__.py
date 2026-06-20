@@ -1,6 +1,8 @@
 """The EZVIZ Open API integration."""
 from __future__ import annotations
 
+import secrets
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -11,6 +13,7 @@ from .const import (
     CONF_APP_SECRET,
     CONF_REGION,
     CONF_SCAN_INTERVAL,
+    CONF_STREAM_TOKEN,
     CONF_VERIFY_SSL,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_VERIFY_SSL,
@@ -19,11 +22,26 @@ from .const import (
     REGIONS,
 )
 from .coordinator import EzvizOpenCoordinator
+from .view import EzvizStreamView
 
 type EzvizConfigEntry = ConfigEntry
 
+_VIEW_REGISTERED = "stream_view_registered"
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    # Backfill a stable stream-proxy token for entries created before v0.2.
+    if not entry.data.get(CONF_STREAM_TOKEN):
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_STREAM_TOKEN: secrets.token_hex(16)}
+        )
+
+    # Register the stream-proxy HTTP view once for the whole integration.
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if not domain_data.get(_VIEW_REGISTERED):
+        hass.http.register_view(EzvizStreamView())
+        domain_data[_VIEW_REGISTERED] = True
+
     verify_ssl = entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
     session = async_get_clientsession(hass, verify_ssl=verify_ssl)
     api = EzvizOpenApi(
