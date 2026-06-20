@@ -29,6 +29,8 @@ REGIONS = {
 PROTOCOLS = {"hls": 2, "rtmp": 3, "flv": 4}
 
 DEFAULT_REGION = "eu"
-DEFAULT_PROTOCOL = "hls"
+# RTMP is a single persistent connection — starts faster and more reliably as a
+# Home Assistant stream source than EZVIZ's HLS (slow first segment).
+DEFAULT_PROTOCOL = "rtmp"
 DEFAULT_VERIFY_SSL = True
 DEFAULT_SCAN_INTERVAL = 120  # seconds; device/channel list refresh cadence
