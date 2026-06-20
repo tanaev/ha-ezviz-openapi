@@ -7,8 +7,10 @@ from typing import Any
 import aiohttp
 
 from homeassistant.components.camera import Camera, CameraEntityFeature
+from homeassistant.components.ffmpeg import async_get_image
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -74,6 +76,8 @@ class EzvizOpenCamera(CoordinatorEntity[EzvizOpenCoordinator], Camera):
 
     _attr_has_entity_name = True
     _attr_supported_features = CameraEntityFeature.STREAM
+    # Each still opens a short-lived cloud session, so don't refresh too often.
+    _attr_frame_interval = 30.0
 
     def __init__(
         self,
@@ -134,11 +138,27 @@ class EzvizOpenCamera(CoordinatorEntity[EzvizOpenCoordinator], Camera):
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Still image via the EZVIZ capture endpoint (best-effort)."""
+        """Still image: grab one frame from the live stream via ffmpeg.
+
+        The EZVIZ ``device/capture`` snapshot API needs a paid cloud package
+        (error 10026), so instead we open a fresh FLV live URL and let HA's
+        bundled ffmpeg pull a single keyframe — no subscription required.
+        """
         try:
-            url = await self.coordinator.api.async_capture(self._serial, self._channel)
-            if url:
-                return await self.coordinator.api.async_fetch_image(url)
+            data = await self.coordinator.api.async_live_address(
+                self._serial,
+                self._channel,
+                PROTOCOLS["flv"],
+                self._codes.get(self._serial),
+            )
         except (EzvizApiError, aiohttp.ClientError, TimeoutError) as err:
-            _LOGGER.debug("Snapshot failed for %s: %s", self.unique_id, err)
-        return None
+            _LOGGER.debug("Snapshot URL failed for %s: %s", self.unique_id, err)
+            return None
+        url = data.get("url")
+        if not url:
+            return None
+        try:
+            return await async_get_image(self.hass, url, width=width, height=height)
+        except HomeAssistantError as err:
+            _LOGGER.debug("Snapshot frame grab failed for %s: %s", self.unique_id, err)
+            return None
