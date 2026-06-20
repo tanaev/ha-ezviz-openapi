@@ -21,7 +21,6 @@ import logging
 import aiohttp
 from aiohttp import web
 
-from homeassistant.components.ffmpeg import async_get_ffmpeg_manager
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -42,6 +41,12 @@ _LOGGER = logging.getLogger(__name__)
 
 _CHUNK = 64 * 1024
 _MAX_CONSECUTIVE_FAILURES = 3  # bail if sessions keep failing instantly
+
+
+def _ffmpeg_binary(hass: HomeAssistant) -> str:
+    """ffmpeg path from the HA ffmpeg component, falling back to PATH."""
+    manager = hass.data.get("ffmpeg")  # DATA_FFMPEG; FFmpegManager.binary
+    return getattr(manager, "binary", None) or "ffmpeg"
 
 
 def _entry_for_token(hass: HomeAssistant, token: str) -> ConfigEntry | None:
@@ -85,7 +90,7 @@ class EzvizStreamView(HomeAssistantView):
         codes = parse_verify_codes(entry.options.get(CONF_VERIFY_CODES, ""))
         verify_ssl = entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
         session = async_get_clientsession(hass, verify_ssl=verify_ssl)
-        ffmpeg_bin = async_get_ffmpeg_manager(hass).binary
+        ffmpeg_bin = _ffmpeg_binary(hass)
 
         failures = 0
         while failures < _MAX_CONSECUTIVE_FAILURES:
