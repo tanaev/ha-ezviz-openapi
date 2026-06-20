@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "EZVIZ Open API",
+        "description": "Enter the appKey/appSecret from https://isgpopen.ezviz.com (Console → App Key Management). These are NOT your app login.",
+        "data": {
+          "app_key": "App Key",
+          "app_secret": "App Secret",
+          "region": "Region (EU for apiieu accounts)",
+          "verify_ssl": "Verify TLS certificate (disable only behind a corporate MITM proxy)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate EZVIZ Open API",
+        "description": "Your appKey/appSecret were rejected. Enter valid credentials.",
+        "data": {
+          "app_key": "App Key",
+          "app_secret": "App Secret",
+          "region": "Region",
+          "verify_ssl": "Verify TLS certificate"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid appKey/appSecret, or wrong region gateway.",
+      "cannot_connect": "Cannot reach the EZVIZ Open API.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This appKey is already configured.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "EZVIZ Open API options",
+        "data": {
+          "protocol": "Stream protocol (hls is the most compatible)",
+          "scan_interval": "Device list refresh interval (seconds)",
+          "verify_codes": "Verify codes for encrypted devices, one per line: SERIAL=CODE"
+        }
+      }
+    }
+  }
+}
