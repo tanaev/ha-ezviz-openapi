@@ -4,7 +4,7 @@ from __future__ import annotations
 from homeassistant.const import Platform
 
 DOMAIN = "ezviz_openapi"
-PLATFORMS = [Platform.CAMERA]
+PLATFORMS = [Platform.CAMERA, Platform.LOCK]
 
 # Config / options keys
 CONF_APP_KEY = "app_key"
@@ -16,6 +16,11 @@ CONF_SCAN_INTERVAL = "scan_interval"
 CONF_VERIFY_CODES = "verify_codes"
 # Per-entry secret embedded in the stable stream-proxy URL (path-based auth).
 CONF_STREAM_TOKEN = "stream_token"
+# Optional EZVIZ *account* login (private app API) — only used for door unlock,
+# which the Open API (appKey/secret) does not expose.
+CONF_ACCOUNT = "account"
+CONF_PASSWORD = "password"
+CONF_LOCK_NO = "lock_no"
 
 
 def parse_verify_codes(raw: str) -> dict[str, str]:
@@ -43,6 +48,17 @@ REGIONS = {
     "china": "https://open.ys7.com",
 }
 
+# Private *app* API hosts (pyezvizapi), per region. Login self-corrects to the
+# account's real area via the loginArea.apiDomain in the response, so an
+# approximate host here is fine.
+APP_API_HOSTS = {
+    "eu": "apiieu.ezvizlife.com",
+    "global": "apiisgp.ezvizlife.com",
+    "us": "apius.ezvizlife.com",
+    "sa": "apiisa.ezvizlife.com",
+    "china": "apiichina.ezvizlife.com",
+}
+
 # live/address/get protocol codes
 PROTOCOLS = {"hls": 2, "rtmp": 3, "flv": 4}
 
@@ -52,3 +68,6 @@ DEFAULT_REGION = "eu"
 DEFAULT_PROTOCOL = "rtmp"
 DEFAULT_VERIFY_SSL = True
 DEFAULT_SCAN_INTERVAL = 120  # seconds; device/channel list refresh cadence
+# Door-station relay number for remote unlock. DS-KH style stations commonly use
+# 1 (gate) / 2 (door); exposed as an option so the right relay can be selected.
+DEFAULT_LOCK_NO = 1

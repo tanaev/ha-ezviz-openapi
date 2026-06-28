@@ -11,6 +11,14 @@
           "verify_ssl": "Verify TLS certificate (disable only behind a corporate MITM proxy)"
         }
       },
+      "app": {
+        "title": "EZVIZ account (optional — for door unlock)",
+        "description": "Door unlock is not available via the Open API. To enable it, enter your EZVIZ app account (email/phone + password). Leave both blank to skip — streaming still works.",
+        "data": {
+          "account": "EZVIZ account (email or phone)",
+          "password": "EZVIZ account password"
+        }
+      },
       "reauth_confirm": {
         "title": "Re-authenticate EZVIZ Open API",
         "description": "Your appKey/appSecret were rejected. Enter valid credentials.",
@@ -24,6 +32,7 @@
     },
     "error": {
       "invalid_auth": "Invalid appKey/appSecret, or wrong region gateway.",
+      "invalid_account": "EZVIZ account login failed — check email/phone and password.",
       "cannot_connect": "Cannot reach the EZVIZ Open API.",
       "unknown": "Unexpected error."
     },
@@ -39,9 +48,15 @@
         "data": {
           "protocol": "Stream protocol (hls is the most compatible)",
           "scan_interval": "Device list refresh interval (seconds)",
-          "verify_codes": "Verify codes for encrypted devices, one per line: SERIAL=CODE"
+          "verify_codes": "Verify codes for encrypted devices, one per line: SERIAL=CODE",
+          "account": "EZVIZ account (email/phone) — for door unlock",
+          "password": "EZVIZ account password — for door unlock",
+          "lock_no": "Door-station relay number (try 1, then 2 if it opens the wrong lock)"
         }
       }
+    },
+    "error": {
+      "invalid_account": "EZVIZ account login failed — check email/phone and password."
     }
   }
 }

@@ -19,14 +19,19 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import EzvizApiError, EzvizAuthError, EzvizOpenApi
 from .const import (
+    APP_API_HOSTS,
+    CONF_ACCOUNT,
     CONF_APP_KEY,
     CONF_APP_SECRET,
+    CONF_LOCK_NO,
+    CONF_PASSWORD,
     CONF_PROTOCOL,
     CONF_REGION,
     CONF_SCAN_INTERVAL,
     CONF_STREAM_TOKEN,
     CONF_VERIFY_CODES,
     CONF_VERIFY_SSL,
+    DEFAULT_LOCK_NO,
     DEFAULT_PROTOCOL,
     DEFAULT_REGION,
     DEFAULT_SCAN_INTERVAL,
@@ -35,10 +40,11 @@ from .const import (
     PROTOCOLS,
     REGIONS,
 )
+from .private_api import EzvizPrivateApi, EzvizPrivateError
 
 
 async def _validate(hass, data: Mapping[str, Any]) -> None:
-    """Raise EzvizAuthError / EzvizApiError / ClientError if creds are bad."""
+    """Raise EzvizAuthError / EzvizApiError / ClientError if Open API creds are bad."""
     verify_ssl = data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
     session = async_get_clientsession(hass, verify_ssl=verify_ssl)
     api = EzvizOpenApi(
@@ -50,6 +56,13 @@ async def _validate(hass, data: Mapping[str, Any]) -> None:
     )
     await api.async_get_token(force=True)
     await api.async_device_list()
+
+
+async def _validate_account(hass, account: str, password: str, region: str) -> None:
+    """Raise EzvizPrivateError if the EZVIZ account login fails."""
+    app_host = APP_API_HOSTS.get(region, APP_API_HOSTS[DEFAULT_REGION])
+    private = EzvizPrivateApi(account, password, app_host)
+    await hass.async_add_executor_job(private.validate)
 
 
 def _user_schema(defaults: Mapping[str, Any] | None = None) -> vol.Schema:
@@ -68,10 +81,23 @@ def _user_schema(defaults: Mapping[str, Any] | None = None) -> vol.Schema:
     )
 
 
+def _app_schema(defaults: Mapping[str, Any] | None = None) -> vol.Schema:
+    defaults = defaults or {}
+    return vol.Schema(
+        {
+            vol.Optional(CONF_ACCOUNT, default=defaults.get(CONF_ACCOUNT, "")): str,
+            vol.Optional(CONF_PASSWORD, default=defaults.get(CONF_PASSWORD, "")): str,
+        }
+    )
+
+
 class EzvizOpenConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the initial setup and reauth."""
 
     VERSION = 1
+
+    def __init__(self) -> None:
+        self._open_data: dict[str, Any] = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -82,12 +108,37 @@ class EzvizOpenConfigFlow(ConfigFlow, domain=DOMAIN):
             if not errors:
                 await self.async_set_unique_id(user_input[CONF_APP_KEY])
                 self._abort_if_unique_id_configured()
-                user_input[CONF_STREAM_TOKEN] = secrets.token_hex(16)
-                return self.async_create_entry(
-                    title="EZVIZ Open API", data=user_input
-                )
+                self._open_data = dict(user_input)
+                return await self.async_step_app()
         return self.async_show_form(
             step_id="user", data_schema=_user_schema(user_input), errors=errors
+        )
+
+    async def async_step_app(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Optional EZVIZ account login — enables door unlock. May be skipped."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            account = user_input.get(CONF_ACCOUNT, "").strip()
+            password = user_input.get(CONF_PASSWORD, "")
+            if account and password:
+                try:
+                    await _validate_account(
+                        self.hass, account, password, self._open_data[CONF_REGION]
+                    )
+                except EzvizPrivateError:
+                    errors["base"] = "invalid_account"
+                else:
+                    self._open_data[CONF_ACCOUNT] = account
+                    self._open_data[CONF_PASSWORD] = password
+            if not errors:
+                self._open_data[CONF_STREAM_TOKEN] = secrets.token_hex(16)
+                return self.async_create_entry(
+                    title="EZVIZ Open API", data=self._open_data
+                )
+        return self.async_show_form(
+            step_id="app", data_schema=_app_schema(user_input), errors=errors
         )
 
     async def async_step_reauth(
@@ -129,14 +180,30 @@ class EzvizOpenConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class EzvizOpenOptionsFlow(OptionsFlow):
-    """Stream protocol, refresh cadence and per-device verify codes."""
+    """Stream protocol, refresh cadence, verify codes, account creds, lock relay."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+        errors: dict[str, str] = {}
         opts = self.config_entry.options
+        data = self.config_entry.data
+        if user_input is not None:
+            account = user_input.get(CONF_ACCOUNT, "").strip()
+            password = user_input.get(CONF_PASSWORD, "")
+            if account and password:
+                try:
+                    await _validate_account(
+                        self.hass, account, password,
+                        data.get(CONF_REGION, DEFAULT_REGION),
+                    )
+                except EzvizPrivateError:
+                    errors["base"] = "invalid_account"
+            if not errors:
+                return self.async_create_entry(title="", data=user_input)
+
+        cur_account = opts.get(CONF_ACCOUNT, data.get(CONF_ACCOUNT, ""))
+        cur_password = opts.get(CONF_PASSWORD, data.get(CONF_PASSWORD, ""))
         schema = vol.Schema(
             {
                 vol.Required(
@@ -151,6 +218,14 @@ class EzvizOpenOptionsFlow(OptionsFlow):
                     CONF_VERIFY_CODES,
                     default=opts.get(CONF_VERIFY_CODES, ""),
                 ): str,
+                vol.Optional(CONF_ACCOUNT, default=cur_account): str,
+                vol.Optional(CONF_PASSWORD, default=cur_password): str,
+                vol.Required(
+                    CONF_LOCK_NO,
+                    default=opts.get(CONF_LOCK_NO, DEFAULT_LOCK_NO),
+                ): vol.All(int, vol.Range(min=0, max=8)),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init", data_schema=schema, errors=errors
+        )

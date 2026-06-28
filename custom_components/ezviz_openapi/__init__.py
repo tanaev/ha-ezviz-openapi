@@ -9,12 +9,16 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import EzvizOpenApi
 from .const import (
+    APP_API_HOSTS,
+    CONF_ACCOUNT,
     CONF_APP_KEY,
     CONF_APP_SECRET,
+    CONF_PASSWORD,
     CONF_REGION,
     CONF_SCAN_INTERVAL,
     CONF_STREAM_TOKEN,
     CONF_VERIFY_SSL,
+    DEFAULT_REGION,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
@@ -22,6 +26,7 @@ from .const import (
     REGIONS,
 )
 from .coordinator import EzvizOpenCoordinator
+from .private_api import EzvizPrivateApi
 from .view import EzvizStreamView
 
 type EzvizConfigEntry = ConfigEntry
@@ -53,6 +58,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     coordinator = EzvizOpenCoordinator(hass, entry, api, scan_interval)
+
+    # Optional private-account API for door unlock (Open API can't unlock).
+    # Options take precedence so creds can be added/changed after setup.
+    account = entry.options.get(CONF_ACCOUNT) or entry.data.get(CONF_ACCOUNT)
+    password = entry.options.get(CONF_PASSWORD) or entry.data.get(CONF_PASSWORD)
+    if account and password:
+        region = entry.data.get(CONF_REGION, DEFAULT_REGION)
+        app_host = APP_API_HOSTS.get(region, APP_API_HOSTS[DEFAULT_REGION])
+        coordinator.private_api = EzvizPrivateApi(account, password, app_host)
+
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator

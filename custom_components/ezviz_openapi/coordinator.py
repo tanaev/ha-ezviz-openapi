@@ -34,6 +34,8 @@ class EzvizOpenCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             update_interval=timedelta(seconds=scan_interval),
         )
         self.api = api
+        # Set by __init__ when account credentials are configured (door unlock).
+        self.private_api: Any | None = None
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:
