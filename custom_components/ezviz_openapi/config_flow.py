@@ -23,7 +23,7 @@ from .const import (
     CONF_ACCOUNT,
     CONF_APP_KEY,
     CONF_APP_SECRET,
-    CONF_LOCK_NO,
+    CONF_DOOR_NO,
     CONF_PASSWORD,
     CONF_PROTOCOL,
     CONF_REGION,
@@ -31,7 +31,7 @@ from .const import (
     CONF_STREAM_TOKEN,
     CONF_VERIFY_CODES,
     CONF_VERIFY_SSL,
-    DEFAULT_LOCK_NO,
+    DEFAULT_DOOR_NO,
     DEFAULT_PROTOCOL,
     DEFAULT_REGION,
     DEFAULT_SCAN_INTERVAL,
@@ -221,9 +221,9 @@ class EzvizOpenOptionsFlow(OptionsFlow):
                 vol.Optional(CONF_ACCOUNT, default=cur_account): str,
                 vol.Optional(CONF_PASSWORD, default=cur_password): str,
                 vol.Required(
-                    CONF_LOCK_NO,
-                    default=opts.get(CONF_LOCK_NO, DEFAULT_LOCK_NO),
-                ): vol.All(int, vol.Range(min=0, max=8)),
+                    CONF_DOOR_NO,
+                    default=opts.get(CONF_DOOR_NO, DEFAULT_DOOR_NO),
+                ): vol.All(int, vol.Range(min=0, max=99)),
             }
         )
         return self.async_show_form(

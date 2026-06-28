@@ -20,7 +20,7 @@ CONF_STREAM_TOKEN = "stream_token"
 # which the Open API (appKey/secret) does not expose.
 CONF_ACCOUNT = "account"
 CONF_PASSWORD = "password"
-CONF_LOCK_NO = "lock_no"
+CONF_DOOR_NO = "door_no"
 
 
 def parse_verify_codes(raw: str) -> dict[str, str]:
@@ -68,6 +68,6 @@ DEFAULT_REGION = "eu"
 DEFAULT_PROTOCOL = "rtmp"
 DEFAULT_VERIFY_SSL = True
 DEFAULT_SCAN_INTERVAL = 120  # seconds; device/channel list refresh cadence
-# Door-station relay number for remote unlock. DS-KH style stations commonly use
-# 1 (gate) / 2 (door); exposed as an option so the right relay can be selected.
-DEFAULT_LOCK_NO = 1
+# ISAPI doorNo for RemoteControl (the lock on the door station). 1 is the first
+# lock; exposed as an option for stations with multiple locks.
+DEFAULT_DOOR_NO = 1

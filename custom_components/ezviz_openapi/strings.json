@@ -51,7 +51,7 @@
           "verify_codes": "Verify codes for encrypted devices, one per line: SERIAL=CODE",
           "account": "EZVIZ account (email/phone) — for door unlock",
           "password": "EZVIZ account password — for door unlock",
-          "lock_no": "Door-station relay number (try 1, then 2 if it opens the wrong lock)"
+          "door_no": "ISAPI door number on the station (1 = first lock; try 2/3 for multi-lock stations)"
         }
       }
     },

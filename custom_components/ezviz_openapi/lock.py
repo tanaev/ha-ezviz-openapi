@@ -1,8 +1,8 @@
-"""Door-station lock entity (remote unlock via the private app API).
+"""Door-station lock entities (remote unlock via the cloud ISAPI passthrough).
 
-One lock per door-station device. The Open API cannot unlock, so this entity is
-only created when EZVIZ *account* credentials are configured. Door stations have
-a momentary relay and report no lock state, so the entity is optimistic: it shows
+One lock per door-station channel. The Open API cannot unlock, so these are only
+created when EZVIZ *account* credentials are configured. Door stations have a
+momentary relay and report no lock state, so each entity is optimistic: it shows
 "unlocked" briefly after a successful command, then returns to "locked".
 """
 from __future__ import annotations
@@ -19,7 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_LOCK_NO, DEFAULT_LOCK_NO, DOMAIN
+from .const import CONF_DOOR_NO, DEFAULT_DOOR_NO, DOMAIN
 from .coordinator import EzvizOpenCoordinator
 from .private_api import EzvizPrivateApi, EzvizPrivateError
 
@@ -39,23 +39,18 @@ async def async_setup_entry(
     if private_api is None:
         return  # no account credentials -> no unlock capability
 
-    lock_no = int(entry.options.get(CONF_LOCK_NO, DEFAULT_LOCK_NO))
+    door_no = int(entry.options.get(CONF_DOOR_NO, DEFAULT_DOOR_NO))
     known: set[str] = set()
 
     @callback
     def _add_new() -> None:
-        serials: dict[str, dict[str, Any]] = {}
-        for cam in coordinator.data.values():
-            serial = cam.get("deviceSerial")
-            if serial and serial not in serials:
-                serials[serial] = cam
         new = [
-            EzvizDoorLock(coordinator, serial, cam, lock_no, private_api)
-            for serial, cam in serials.items()
-            if serial not in known
+            EzvizDoorLock(coordinator, key, door_no, private_api)
+            for key in coordinator.data
+            if key not in known
         ]
         for lock in new:
-            known.add(lock.serial)
+            known.add(lock.lock_key)
         if new:
             async_add_entities(new)
 
@@ -64,43 +59,49 @@ async def async_setup_entry(
 
 
 class EzvizDoorLock(CoordinatorEntity[EzvizOpenCoordinator], LockEntity):
-    """Remote door unlock for one EZVIZ door-station device."""
+    """Remote door unlock for one EZVIZ door-station channel."""
 
     _attr_has_entity_name = True
-    _attr_name = "Door"
 
     def __init__(
         self,
         coordinator: EzvizOpenCoordinator,
-        serial: str,
-        cam: dict[str, Any],
-        lock_no: int,
+        key: str,
+        door_no: int,
         private_api: EzvizPrivateApi,
     ) -> None:
         super().__init__(coordinator)
-        self.serial = serial
-        self._cam = cam
-        self._lock_no = lock_no
+        self.lock_key = key
+        self._door_no = door_no
         self._private_api = private_api
-        self._attr_unique_id = f"{serial}_lock"
+        cam = coordinator.data[key]
+        self._serial: str = cam["deviceSerial"]
+        self._channel: int = cam["channelNo"]
+        self._attr_unique_id = f"{self._serial}_{self._channel}_lock"
+        name = cam.get("channelName") or f"Channel {self._channel}"
+        self._attr_name = f"{name} lock"
         self._attr_is_locked = True  # optimistic; no real state from the device
+
+    @property
+    def _cam(self) -> dict[str, Any]:
+        return self.coordinator.data.get(self.lock_key, {})
 
     @property
     def device_info(self) -> DeviceInfo:
         dev = self._cam.get("_device", {})
         return DeviceInfo(
-            identifiers={(DOMAIN, self.serial)},
-            name=dev.get("deviceName") or self.serial,
+            identifiers={(DOMAIN, self._serial)},
+            name=dev.get("deviceName") or self._serial,
             manufacturer="EZVIZ",
             model=dev.get("model") or dev.get("deviceType"),
-            serial_number=self.serial,
+            serial_number=self._serial,
         )
 
     async def async_unlock(self, **kwargs: Any) -> None:
         """Send the remote unlock command (physically opens the door)."""
         try:
             await self.hass.async_add_executor_job(
-                self._private_api.unlock, self.serial, self._lock_no
+                self._private_api.unlock, self._serial, self._channel, self._door_no
             )
         except EzvizPrivateError as err:
             raise HomeAssistantError(f"EZVIZ unlock failed: {err}") from err
