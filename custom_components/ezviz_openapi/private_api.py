@@ -33,14 +33,21 @@ _LOGGER = logging.getLogger(__name__)
 # Generic non-empty routing key accepted by the proxy (it routes on the ISAPI
 # path in apiData, not on this value; an empty key is rejected with 400).
 _API_KEY = "100163"
-# Transient "device network abnormal" cloud-tunnel hiccup -> retry.
+# Transient "device network abnormal" — the cloud tunnel to the device is waking
+# up. Poll quickly so we catch it the moment it responds (~0.7s warm).
 _DEVICE_NET_ERR = "2009"
-_MAX_TRIES = 5
-_RETRY_DELAY = 2.0
+_MAX_TRIES = 6
+_RETRY_DELAY = 0.5
 
 
 class EzvizPrivateError(Exception):
     """Login or unlock failed on the private app API."""
+
+    def __init__(self, message: str, *, tunnel: bool = False) -> None:
+        super().__init__(message)
+        # tunnel=True -> the device cloud link was unreachable (2009); a
+        # re-login would not help, so callers should not retry it as auth.
+        self.tunnel = tunnel
 
 
 class EzvizPrivateApi:
@@ -79,15 +86,25 @@ class EzvizPrivateApi:
             "apiKey": _API_KEY,
             "apiData": api_data,
         }
-        text = ""
+        started = time.monotonic()
         for attempt in range(_MAX_TRIES):
             resp = client._session.post(url, data=payload, timeout=20)  # noqa: SLF001
             text = resp.text
             if _DEVICE_NET_ERR not in text:
+                if attempt:
+                    _LOGGER.debug(
+                        "Unlock tunnel woke after %.1fs (%s tries)",
+                        time.monotonic() - started, attempt + 1,
+                    )
                 return text
-            _LOGGER.debug("Unlock tunnel busy (2009), retry %s/%s", attempt + 1, _MAX_TRIES)
             time.sleep(_RETRY_DELAY)
-        return text
+        # Still 2009 -> the device's cloud link is asleep/offline. Re-login won't
+        # help, so flag it as a tunnel error rather than an auth failure.
+        raise EzvizPrivateError(
+            f"device {serial} not reachable via cloud after "
+            f"{time.monotonic() - started:.1f}s",
+            tunnel=True,
+        )
 
     def _do_unlock(self, serial: str, channel_no: int, door_no: int) -> None:
         client = self._ensure_client()
@@ -104,10 +121,23 @@ class EzvizPrivateApi:
         raise EzvizPrivateError(f"device rejected unlock: {text[:300]}")
 
     def unlock(self, serial: str, channel_no: int = 1, door_no: int = 1) -> None:
-        """Unlock door ``door_no`` on door-station ``channel_no``; re-login once."""
+        """Unlock door ``door_no`` on door-station ``channel_no``.
+
+        Retries once with a fresh login only on a genuine session/auth failure —
+        not on a tunnel (2009) error, where re-login would just double the wait.
+        """
+        started = time.monotonic()
+        had_client = self._client is not None
         try:
             self._do_unlock(serial, channel_no, door_no)
         except EzvizPrivateError as err:
+            if err.tunnel:
+                raise
             _LOGGER.debug("Unlock failed (%s), re-logging in: %s", serial, err)
             self._client = None
             self._do_unlock(serial, channel_no, door_no)
+        _LOGGER.debug(
+            "Unlock %s ch%s door%s done in %.2fs (session %s)",
+            serial, channel_no, door_no, time.monotonic() - started,
+            "reused" if had_client else "fresh login",
+        )
