@@ -53,6 +53,12 @@ class EzvizOpenCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
             channel = cam.get("channelNo")
             if not serial or channel is None:
                 continue
+            # Devices report every physical channel (e.g. 50), but unconfigured
+            # ones are named after the serial. Skip those — only real, named
+            # channels have video / a door station behind them.
+            name = cam.get("channelName")
+            if not name or name == serial:
+                continue
             cam["_device"] = device_by_serial.get(serial, {})
             result[f"{serial}_{channel}"] = cam
         return result

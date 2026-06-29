@@ -1,7 +1,7 @@
 {
   "domain": "ezviz_openapi",
   "name": "EZVIZ Open API",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "config_flow": true,
   "dependencies": ["ffmpeg", "http"],
   "documentation": "https://github.com/tanaev/ha-ezviz-openapi",
